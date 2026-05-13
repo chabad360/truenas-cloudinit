@@ -1,0 +1,3 @@
+[submodule "truenas-go"]
+	path = truenas-go
+	url = https://github.com/deevus/truenas-go
