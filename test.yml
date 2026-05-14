@@ -8,15 +8,23 @@ vm:
     min_memory: 2048
     disk_dir: /mnt/main/VMs
     disk_size: 50
+    nic: eno1
+    mac_address: 00:a0:98:46:eb:7c
 cloud_init:
     users:
         - name: root
-          groups: ""
           ssh_authorized_keys:
             - |
               ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIN+WF59wojop5ghMEuRYSeZyZqgWT1+L8VnJt+Fb1dIm coder@2db740a2b7d7
           lock_passwd: false
+    chpasswd:
+        expire: false
+        users:
+            - name: root
+              password: $2a$10$mr1eZVF3Y5ywnnnlTBAk0OCt0PMCpMXeIjvOfVawDe6sxgcE15P9G
     packages:
         - qemu-guest-agent
     timezone: America/New_York
+    ssh_pwauth: true
     hostname: test
+    disable_root: false

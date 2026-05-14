@@ -2,6 +2,7 @@ package vmconfig
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"path"
 	"regexp"
@@ -25,6 +26,9 @@ type VMConfig struct {
 
 	DiskDir  string `yaml:"disk_dir,omitempty"`
 	DiskSize int    `yaml:"disk_size,omitempty"`
+
+	NIC        string `yaml:"nic,omitempty"`
+	MACAddress string `yaml:"mac_address,omitempty"`
 }
 
 func createVMConfig(defaultConfig VMConfig, client client.Client) (*VMConfig, error) {
@@ -42,6 +46,14 @@ func createVMConfig(defaultConfig VMConfig, client client.Client) (*VMConfig, er
 	vmNameRegex := regexp.MustCompile("^[A-Za-z0-9_]+$")
 	dirRegex := regexp.MustCompile(`^/mnt/[^/]+(/[^/]+)*$`)
 	fsService := truenas.NewFilesystemService(client, client.Version())
+
+	r, err := client.Call(context.Background(), "vm.random_mac", nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate random MAC address: %w", err)
+	}
+	if err := json.Unmarshal(r, &vmConfig.MACAddress); err != nil {
+		return nil, fmt.Errorf("failed to parse random MAC address: %w", err)
+	}
 
 	form := huh.NewForm(
 		huh.NewGroup(
@@ -175,9 +187,46 @@ func createVMConfig(defaultConfig VMConfig, client client.Client) (*VMConfig, er
 					return nil
 				}),
 		),
+
+		huh.NewGroup(
+			huh.NewNote().
+				Title("NIC Selection").
+				Description("Specify the network device configuration for the VM."),
+
+			huh.NewInput().
+				Title("MAC Address").
+				Placeholder("Enter the MAC address for the VM's NIC (e.g., 02:00:00:00:00:01)").
+				Value(&vmConfig.MACAddress).
+				Validate(func(s string) error {
+					macRegex := regexp.MustCompile(`^([0-9A-Fa-f]{2}[:]){5}([0-9A-Fa-f]{2})$`)
+					if !macRegex.MatchString(s) {
+						return fmt.Errorf("Invalid MAC address format")
+					}
+					return nil
+				}),
+			huh.NewSelect[string]().
+				Title("NIC").
+				Description("Select the NIC the virtual device will bind to").
+				Options(func() []huh.Option[string] {
+					r, err := client.Call(context.Background(), "vm.device.nic_attach_choices", nil)
+					if err != nil {
+						return nil
+					}
+					var results map[string]string
+					if err := json.Unmarshal(r, &results); err != nil {
+						return nil
+					}
+					var options []huh.Option[string]
+					for k, v := range results {
+						options = append(options, huh.NewOption(k, v))
+					}
+					return options
+				}()...).
+				Value(&vmConfig.NIC),
+		),
 	)
 
-	err := form.Run()
+	err = form.Run()
 	if err != nil {
 		return nil, err
 	}

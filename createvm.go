@@ -1,277 +1,141 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
-	"os"
 	"path"
-	"time"
+	"strings"
 	"truenas-cloudinit/vmconfig"
 
-	"charm.land/huh/v2"
+	"charm.land/huh/v2/spinner"
+	truenas "github.com/deevus/truenas-go"
 	"github.com/deevus/truenas-go/client"
-	cloudinit "go.pilab.hu/cloud/cloud-init"
-	"gopkg.in/yaml.v3"
+	"github.com/google/uuid"
 )
 
 func createVM(wsClient client.Client) {
-	action := ""
+	cfg, err := configureVM(wsClient)
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	err := huh.NewSelect[string]().
-		Title("Create a VM").
-		Description("How would you like to create your VM?").
-		Options(
-			huh.NewOption("From Scratch", "from_scratch"),
-			huh.NewOption("Modify From Default Template", "from_template"),
-			huh.NewOption("From Existing Config", "from_config"),
-			huh.NewOption("Cancel", "cancel"),
-		).
-		Value(&action).
+	id := uuid.New()
+
+	err = spinner.New().
+		Title("Fetching images...").
+		ActionWithErr(func(ctx context.Context) error {
+			return uploadImages(ctx, cfg, id, wsClient)
+		}).
 		Run()
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	cfg := emptyConfig()
-	switch action {
-	case "from_scratch":
-		cfg, err = vmconfig.EditConfig(cfg, wsClient, false)
-		if err != nil {
-			log.Fatal(err)
-		}
-	case "from_template":
-		cfg = loadTemplate()
-		cfg, err = vmconfig.EditConfig(cfg, wsClient, false)
-		if err != nil {
-			log.Fatal(err)
-		}
-	case "from_config":
-		cfg = loadConfig()
-	case "cancel":
-		fmt.Println("VM creation cancelled")
-		return
-	}
-
-	err = reviewConfig(cfg, wsClient)
+	err = spinner.New().
+		Title("Creating VM...").
+		ActionWithErr(func(ctx context.Context) error {
+			return createVMWithConfig(ctx, wsClient, cfg, id)
+		}).
+		Run()
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	log.Printf("VM %s created successfully", cfg.VM.Name)
+
 }
 
-func reviewConfig(cfg *vmconfig.CreateVMConfig, c client.Client) error {
-	var action string
-	form := huh.NewForm(
-		huh.NewGroup(
-			huh.NewNote().
-				Title("Review Configuration").
-				Description("Review the VM and Cloud-Init configuration before creating the VM."),
+func createVMWithConfig(ctx context.Context, c client.Client, cfg *vmconfig.CreateVMConfig, id uuid.UUID) error {
+	s := truenas.NewVMService(c, c.Version())
 
-			huh.NewNote().
-				Title("VM Details").
-				Description(fmt.Sprintf(`%s: %s, 
- - %d VCPUs, 
- - %d Cores, 
- - %d Threads, 
+	var minMem *int64
+	if cfg.VM.MinMemory != 0 {
+		minMem = truenas.Int64Ptr(int64(cfg.VM.MinMemory))
+	}
 
- - %d MiB Memory, 
- - %d MiB Min Memory, 
+	vm, err := s.CreateVM(ctx, truenas.CreateVMOpts{
+		Name: cfg.VM.Name,
 
- - %d GiB Disk`,
-					cfg.VM.Name, cfg.VM.ImageId, cfg.VM.VCPUs, cfg.VM.Cores, cfg.VM.Threads, cfg.VM.Memory, cfg.VM.MinMemory, cfg.VM.DiskSize)),
+		VCPUs:   int64(cfg.VM.VCPUs),
+		Cores:   int64(cfg.VM.Cores),
+		Threads: int64(cfg.VM.Threads),
 
-			huh.NewNote().
-				Title("Cloud-Init Details").
-				Description(fmt.Sprintf(`Hostname: %s
-Timezone: %s
-Packages: %v`,
-					cfg.CloudInit.Hostname, cfg.CloudInit.Timezone, cfg.CloudInit.Packages)),
+		Memory:    int64(cfg.VM.Memory),
+		MinMemory: minMem,
 
-			huh.NewSelect[string]().
-				Title("Action").
-				Options(
-					huh.NewOption("Create VM", "create"),
-					huh.NewOption("Edit Config", "edit"),
-					huh.NewOption("Save Config as YAML", "save"),
-					huh.NewOption("Cancel", "cancel"),
-				).
-				Value(&action),
-		),
-	)
-
-	err := form.Run()
+		EnsureDisplayDevice: false,
+		Bootloader:          "UEFI",
+		CPUMode:             "HOST-PASSTHROUGH",
+		Time:                "LOCAL",
+		ShutdownTimeout:     90,
+	})
 	if err != nil {
 		return err
 	}
 
-	switch action {
-	case "edit":
-		newCfg, err := vmconfig.EditConfig(cfg, c, false)
-		if err != nil {
-			return err
-		}
-		return reviewConfig(newCfg, c)
-	case "save":
-		saveCloudInitConfigAsYAML(cfg)
-		os.Exit(0)
-	case "cancel":
-		fmt.Println("VM creation cancelled")
-		os.Exit(0)
+	diskPath := path.Join(cfg.VM.DiskDir, cfg.VM.Name)
+	exists, err := c.FileExists(ctx, diskPath)
+	if err != nil {
+		return err
 	}
+
+	if exists {
+		return fmt.Errorf("disk already exists at %s", diskPath)
+	}
+
+	// v := truenas.NewDatasetService(c, c.Version())
+	// vol, err := v.CreateZvol(ctx, truenas.CreateZvolOpts{
+	// 	Name:    diskPath,
+	// 	Volsize: int64(cfg.VM.DiskSize) * 1_000_000_000,
+	// 	Sparse:  true,
+	// })
+	// if err != nil {
+	// 	return err
+	// }
+
+	_, err = s.CreateDevice(ctx, truenas.CreateVMDeviceOpts{
+		VM:         vm.ID,
+		DeviceType: truenas.DeviceTypeDisk,
+		Disk: &truenas.CreateDiskDevice{
+			Type:       "VIRTIO",
+			ZvolName:   truenas.StringPtr(strings.TrimPrefix(diskPath, "/mnt/")),
+			CreateZvol: true,
+			ZvolSize:   truenas.Int64Ptr(int64(cfg.VM.DiskSize) * 1024 * 1024 * 1024),
+		},
+		Order: truenas.Int64Ptr(1000),
+	})
+	if err != nil {
+		return err
+	}
+
+	vmService := truenas.NewVMService(c, c.Version())
+	vmService.ConvertDevice(ctx, truenas.ConvertDeviceOpts{
+		SourcePath: path.Join(settings.ISODir, path.Base(vmconfig.Images[cfg.VM.ImageId].URL)),
+		DestPath:   path.Join("/dev/zvol/", strings.TrimPrefix(diskPath, "/mnt/")),
+	})
+
+	_, err = s.CreateDevice(ctx, truenas.CreateVMDeviceOpts{
+		VM:         vm.ID,
+		DeviceType: truenas.DeviceTypeCDROM,
+		CDROM: &truenas.CDROMDevice{
+			Path: path.Join(settings.ISODir, cfg.VM.Name+".iso"),
+		},
+		Order: truenas.Int64Ptr(1001),
+	})
+	if err != nil {
+		return err
+	}
+
+	_, err = s.CreateDevice(ctx, truenas.CreateVMDeviceOpts{
+		VM:         vm.ID,
+		DeviceType: truenas.DeviceTypeNIC,
+		NIC: &truenas.NICDevice{
+			Type:      "VIRTIO",
+			NICAttach: cfg.VM.NIC,
+			MAC:       cfg.VM.MACAddress,
+		},
+	})
 
 	return nil
-}
-
-func emptyConfig() *vmconfig.CreateVMConfig {
-	return &vmconfig.CreateVMConfig{
-		VM: vmconfig.VMConfig{
-			Name:    "",
-			ImageId: "",
-
-			VCPUs:   1,
-			Cores:   1,
-			Threads: 1,
-
-			Memory: 512,
-
-			DiskSize: 10,
-		},
-		CloudInit: cloudinit.CloudConfig{
-			Packages: []string{"qemu-guest-agent"},
-			Timezone: time.Now().Location().String(),
-		},
-	}
-}
-
-func loadTemplate() *vmconfig.CreateVMConfig {
-	template := &vmconfig.CreateVMConfig{
-		VM: vmconfig.VMConfig{
-			Name:    "",
-			ImageId: settings.VMDefaults.ImageId,
-
-			VCPUs:   settings.VMDefaults.VCPUs,
-			Cores:   settings.VMDefaults.Cores,
-			Threads: settings.VMDefaults.Threads,
-
-			Memory:    settings.VMDefaults.Memory,
-			MinMemory: settings.VMDefaults.MinMemory,
-
-			DiskDir:  settings.VMDefaults.DiskDir,
-			DiskSize: settings.VMDefaults.DiskSize,
-		},
-		CloudInit: cloudinit.CloudConfig{
-			Packages: []string{"qemu-guest-agent"},
-		},
-	}
-
-	return template
-}
-
-func loadConfig() *vmconfig.CreateVMConfig {
-	p, err := os.Getwd()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	err = huh.NewInput().
-		Title("Config Location").
-		Description("Enter the location where the VM configuration YAML file is located.").
-		Value(&p).
-		SuggestionsFunc(func() []string {
-			files, err := os.ReadDir(p)
-			if err != nil {
-				return nil
-			}
-			var suggestions []string
-			for _, file := range files {
-				if file.IsDir() || path.Ext(file.Name()) == ".yaml" || path.Ext(file.Name()) == ".yml" {
-					suggestions = append(suggestions, path.Join(p, file.Name()))
-				}
-			}
-			return suggestions
-		}, &p).
-		Validate(func(s string) error {
-			if path.Ext(p) != ".yaml" && path.Ext(p) != ".yml" {
-				return fmt.Errorf("file extension must be .yaml or .yml")
-			}
-			if _, err := os.Stat(p); os.IsNotExist(err) {
-				return fmt.Errorf("file does not exist")
-			}
-			return nil
-		}).Run()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	data, err := os.ReadFile(p)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	var cfg vmconfig.CreateVMConfig
-	err = yaml.Unmarshal(data, &cfg)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	return &cfg
-}
-
-func saveCloudInitConfigAsYAML(cfg *vmconfig.CreateVMConfig) {
-	p, err := os.Getwd()
-	if err != nil {
-		log.Fatal(err)
-	}
-	err = huh.NewInput().
-		Title("Save Location").
-		Description("Enter the location where the VM configuration YAML file will be saved.").
-		Value(&p).
-		SuggestionsFunc(func() []string {
-			files, err := os.ReadDir(p)
-			if err != nil {
-				return nil
-			}
-			var suggestions []string
-			for _, file := range files {
-				if file.IsDir() {
-					suggestions = append(suggestions, p+"/"+file.Name())
-				}
-			}
-			return suggestions
-		}, &p).
-		Validate(func(s string) error {
-			if _, err := os.Stat(path.Dir(p)); os.IsNotExist(err) {
-				return fmt.Errorf("directory does not exist")
-			}
-			if path.Ext(p) != ".yaml" && path.Ext(p) != ".yml" {
-				return fmt.Errorf("file extension must be .yaml or .yml")
-			}
-			return nil
-		}).Run()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	if _, err := os.Stat(p); err == nil {
-		var overwrite bool
-		err = huh.NewConfirm().
-			Title("File already exists").
-			Description("A file already exists at the specified location. Do you want to overwrite it?").
-			Value(&overwrite).
-			Run()
-		if err != nil {
-			log.Fatal(err)
-		}
-		if !overwrite {
-			fmt.Println("Save cancelled")
-			return
-		}
-	}
-
-	data, err := yaml.Marshal(cfg)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	err = os.WriteFile(p, data, 0o600)
-
 }

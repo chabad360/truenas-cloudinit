@@ -8,6 +8,8 @@ require (
 	charm.land/huh/v2 v2.0.3
 	github.com/adrg/xdg v0.5.3
 	github.com/deevus/truenas-go v0.5.0
+	github.com/google/uuid v1.6.0
+	github.com/kdomanski/iso9660 v0.4.0
 	github.com/tkuchiki/go-timezone v0.2.3
 	go.pilab.hu/cloud/cloud-init v0.0.0-20250504095608-e34b1e8e15f3
 	golang.org/x/crypto v0.48.0
@@ -33,7 +35,6 @@ require (
 	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
-	github.com/kdomanski/iso9660 v0.4.0 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/lucasb-eyer/go-colorful v1.3.0 // indirect
 	github.com/mattn/go-runewidth v0.0.20 // indirect

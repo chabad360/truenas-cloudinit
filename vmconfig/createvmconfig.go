@@ -6,13 +6,12 @@ import (
 
 	"charm.land/huh/v2"
 	"github.com/deevus/truenas-go/client"
-	cloudinit "go.pilab.hu/cloud/cloud-init"
 	"golang.org/x/crypto/ssh"
 )
 
 type CreateVMConfig struct {
-	VM        VMConfig              `yaml:"vm,omitempty"`
-	CloudInit cloudinit.CloudConfig `yaml:"cloud_init,omitempty"`
+	VM        VMConfig    `yaml:"vm,omitempty"`
+	CloudInit CloudConfig `yaml:"cloud_init,omitempty"`
 }
 
 func EditConfig(config *CreateVMConfig, client client.Client, skipvm bool) (*CreateVMConfig, error) {
@@ -80,7 +79,7 @@ func EditConfig(config *CreateVMConfig, client client.Client, skipvm bool) (*Cre
 		return nil, err
 	}
 
-	var rootUser *cloudinit.User
+	var rootUser *User
 	if cloudInitConfig.Users != nil {
 		for i := range cloudInitConfig.Users {
 			if cloudInitConfig.Users[i].Name == "root" {
