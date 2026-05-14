@@ -1,0 +1,22 @@
+vm:
+    name: test
+    image_id: debian-13-generic-amd64-20260512-2476
+    vcpus: 1
+    cores: 4
+    threads: 1
+    memory: 8192
+    min_memory: 2048
+    disk_dir: /mnt/main/VMs
+    disk_size: 50
+cloud_init:
+    users:
+        - name: root
+          groups: ""
+          ssh_authorized_keys:
+            - |
+              ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIN+WF59wojop5ghMEuRYSeZyZqgWT1+L8VnJt+Fb1dIm coder@2db740a2b7d7
+          lock_passwd: false
+    packages:
+        - qemu-guest-agent
+    timezone: America/New_York
+    hostname: test

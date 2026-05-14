@@ -1,10 +1,8 @@
-package main
+package vmconfig
 
 import (
 	"context"
 	"fmt"
-	"log"
-	"os"
 	"path"
 	"regexp"
 	"strconv"
@@ -12,7 +10,6 @@ import (
 	"charm.land/huh/v2"
 	"github.com/deevus/truenas-go"
 	"github.com/deevus/truenas-go/client"
-	"gopkg.in/yaml.v3"
 )
 
 type VMConfig struct {
@@ -28,70 +25,6 @@ type VMConfig struct {
 
 	DiskDir  string `yaml:"disk_dir,omitempty"`
 	DiskSize int    `yaml:"disk_size,omitempty"`
-}
-
-func saveVMConfigAsYAML(vmConfig *VMConfig) {
-	p, err := os.Getwd()
-	if err != nil {
-		log.Fatal(err)
-	}
-	err = huh.NewInput().
-		Title("Save Location").
-		Description("Enter the location where the VM configuration YAML file will be saved.").
-		Value(&p).
-		SuggestionsFunc(func() []string {
-			files, err := os.ReadDir(p)
-			if err != nil {
-				return nil
-			}
-			var suggestions []string
-			for _, file := range files {
-				if file.IsDir() {
-					suggestions = append(suggestions, p+"/"+file.Name())
-				}
-			}
-			return suggestions
-		}, &p).
-		Validate(func(s string) error {
-			if _, err := os.Stat(path.Dir(p)); os.IsNotExist(err) {
-				return fmt.Errorf("directory does not exist")
-			}
-			if path.Ext(p) != ".yaml" && path.Ext(p) != ".yml" {
-				return fmt.Errorf("file extension must be .yaml or .yml")
-			}
-			return nil
-		}).Run()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	if _, err := os.Stat(p); err == nil {
-		var overwrite bool
-		err = huh.NewConfirm().
-			Title("File already exists").
-			Description("A file already exists at the specified location. Do you want to overwrite it?").
-			Value(&overwrite).
-			Run()
-		if err != nil {
-			log.Fatal(err)
-		}
-		if !overwrite {
-			fmt.Println("Save cancelled")
-			return
-		}
-	}
-
-	cfg := CreateVMConfig{
-		VM: *vmConfig,
-	}
-
-	data, err := yaml.Marshal(cfg)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	err = os.WriteFile(p, data, 0o600)
-
 }
 
 func createVMConfig(defaultConfig VMConfig, client client.Client) (*VMConfig, error) {
@@ -131,7 +64,7 @@ func createVMConfig(defaultConfig VMConfig, client client.Client) (*VMConfig, er
 				Title("Image").
 				OptionsFunc(func() []huh.Option[string] {
 					opts := []huh.Option[string]{}
-					for k, img := range images {
+					for k, img := range Images {
 						opts = append(opts, huh.Option[string]{Value: k, Key: fmt.Sprintf("%s (%.2f GB)", img.Name, float64(img.Size)/(1000*1000*1000))})
 					}
 					return opts
@@ -210,7 +143,7 @@ func createVMConfig(defaultConfig VMConfig, client client.Client) (*VMConfig, er
 
 			huh.NewInput().
 				Title("Disk Directory").
-				Placeholder("Enter the directory where the VM disk will be stored (e.g., /mnt/pool/vm-disks)").
+				Placeholder("Enter the directory where the VM ZVol will be stored (e.g., /mnt/pool/vm-disks)").
 				Value(&vmConfig.DiskDir).
 				SuggestionsFunc(func() []string {
 					p := path.Dir(vmConfig.DiskDir)

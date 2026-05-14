@@ -8,7 +8,9 @@ require (
 	charm.land/huh/v2 v2.0.3
 	github.com/adrg/xdg v0.5.3
 	github.com/deevus/truenas-go v0.5.0
+	github.com/tkuchiki/go-timezone v0.2.3
 	go.pilab.hu/cloud/cloud-init v0.0.0-20250504095608-e34b1e8e15f3
+	golang.org/x/crypto v0.48.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
@@ -39,7 +41,6 @@ require (
 	github.com/muesli/cancelreader v0.2.2 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
-	golang.org/x/crypto v0.48.0 // indirect
 	golang.org/x/sync v0.19.0 // indirect
 	golang.org/x/sys v0.42.0 // indirect
 	golang.org/x/time v0.14.0 // indirect

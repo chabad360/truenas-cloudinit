@@ -1,4 +1,4 @@
-package main
+package vmconfig
 
 type Image struct {
 	Name string `json:"name"`
@@ -6,7 +6,7 @@ type Image struct {
 	URL  string `json:"url"`
 }
 
-var images = map[string]Image{
+var Images = map[string]Image{
 	"debian-13-generic-amd64-20260512-2476": {
 		URL:  "https://cloud.debian.org/images/cloud/trixie/20260512-2476/debian-13-generic-amd64-20260512-2476.qcow2",
 		Size: 412_000_000,

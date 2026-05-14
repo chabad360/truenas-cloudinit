@@ -10,6 +10,7 @@ import (
 	"path"
 	"regexp"
 	"strconv"
+	"truenas-cloudinit/vmconfig"
 
 	"charm.land/huh/v2"
 	"charm.land/huh/v2/spinner"
@@ -19,7 +20,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-type Config struct {
+type Settings struct {
 	ApiToken string `yaml:"api_token"`
 
 	Host string `yaml:"host"`
@@ -27,10 +28,10 @@ type Config struct {
 
 	ISODir string `yaml:"iso_dir,omitempty"`
 
-	VMDefaults VMConfig `yaml:"vm_defaults,omitempty"`
+	VMDefaults vmconfig.VMConfig `yaml:"vm_defaults,omitempty"`
 }
 
-func editConfig(config *Config, client client.Client) {
+func editSettings(config *Settings, client client.Client) {
 	dirRegex := regexp.MustCompile(`^/mnt/[^/]+(/[^/]+)*$`)
 	fsService := truenas.NewFilesystemService(client, client.Version())
 
@@ -126,7 +127,7 @@ func editConfig(config *Config, client client.Client) {
 	err = os.WriteFile(configPath, data, 0o600)
 }
 
-func getConfig() (*Config, error) {
+func createSettings() (*Settings, error) {
 	path, err := xdg.SearchConfigFile("truenas/config.yaml")
 	if err != nil {
 		return nil, err
@@ -136,7 +137,7 @@ func getConfig() (*Config, error) {
 		return nil, err
 	}
 
-	config := &Config{}
+	config := &Settings{}
 	err = yaml.Unmarshal(file, config)
 	if err != nil {
 		return nil, err
@@ -144,7 +145,7 @@ func getConfig() (*Config, error) {
 	return config, nil
 }
 
-func getApiToken() (*Config, error) {
+func getApiToken() (*Settings, error) {
 	var host, portStr string
 	form := huh.NewForm(
 		huh.NewGroup(
@@ -324,7 +325,7 @@ func getApiToken() (*Config, error) {
 		),
 	)
 
-	config := &Config{
+	config := &Settings{
 		ApiToken: token,
 		Host:     host,
 		Port:     port,
