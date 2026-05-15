@@ -24,13 +24,14 @@ func main() {
 	}
 
 	var wsClient *client.WebSocketClient
-	spinner.New().
+	err = spinner.New().
 		Title(fmt.Sprintf("Connecting to %s...", settings.Host)).
 		ActionWithErr(func(ctx context.Context) error {
 			c, err := client.NewWebSocketClient(client.WebSocketConfig{
-				Host:   settings.Host,
-				Port:   settings.Port,
-				APIKey: settings.ApiToken,
+				Host:     settings.Host,
+				Port:     settings.Port,
+				Username: "admin",
+				APIKey:   settings.ApiToken,
 			})
 			if err != nil {
 				return err

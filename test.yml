@@ -1,12 +1,12 @@
 vm:
-    name: test
+    name: coolify-1
     image_id: debian-13-generic-amd64-20260512-2476
     vcpus: 1
     cores: 4
     threads: 1
     memory: 8192
     min_memory: 2048
-    disk_dir: /mnt/main/VMs
+    disk_dir: /mnt/main/VMs/volumes
     disk_size: 50
     nic: eno1
     mac_address: 00:a0:98:46:eb:7c

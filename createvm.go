@@ -49,6 +49,39 @@ func createVM(wsClient client.Client) {
 func createVMWithConfig(ctx context.Context, c client.Client, cfg *vmconfig.CreateVMConfig, id uuid.UUID) error {
 	s := truenas.NewVMService(c, c.Version())
 
+	diskPath := path.Join("/dev/zvol/",
+		strings.TrimPrefix(cfg.VM.DiskDir, "/mnt/"),
+		fmt.Sprintf("%s-%s", cfg.VM.Name, id.String()[24:]))
+	exists, err := c.FileExists(ctx, diskPath)
+	if err != nil {
+		return err
+	}
+
+	if exists {
+		return fmt.Errorf("disk already exists at %s", diskPath)
+	}
+
+	v := truenas.NewDatasetService(c, c.Version())
+	_, err = v.CreateZvol(ctx, truenas.CreateZvolOpts{
+		Name:    strings.TrimPrefix(diskPath, "/dev/zvol/"),
+		Volsize: int64(cfg.VM.DiskSize) * 1024 * 1024 * 1024,
+		Sparse:  true,
+	})
+	if err != nil {
+		return err
+	}
+
+	ok, err := s.ConvertDevice(ctx, truenas.ConvertDeviceOpts{
+		Source:      path.Join(settings.ISODir, path.Base(vmconfig.Images[cfg.VM.ImageId].URL)),
+		Destination: diskPath,
+	})
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return fmt.Errorf("device conversion failed")
+	}
+
 	var minMem *int64
 	if cfg.VM.MinMemory != 0 {
 		minMem = truenas.Int64Ptr(int64(cfg.VM.MinMemory))
@@ -64,56 +97,27 @@ func createVMWithConfig(ctx context.Context, c client.Client, cfg *vmconfig.Crea
 		Memory:    int64(cfg.VM.Memory),
 		MinMemory: minMem,
 
-		EnsureDisplayDevice: false,
 		Bootloader:          "UEFI",
 		CPUMode:             "HOST-PASSTHROUGH",
-		Time:                "LOCAL",
+		Time:                "UTC",
 		ShutdownTimeout:     90,
+		EnsureDisplayDevice: truenas.BoolPtr(false),
+		// cpu_model	null
 	})
 	if err != nil {
 		return err
 	}
-
-	diskPath := path.Join(cfg.VM.DiskDir, cfg.VM.Name)
-	exists, err := c.FileExists(ctx, diskPath)
-	if err != nil {
-		return err
-	}
-
-	if exists {
-		return fmt.Errorf("disk already exists at %s", diskPath)
-	}
-
-	// v := truenas.NewDatasetService(c, c.Version())
-	// vol, err := v.CreateZvol(ctx, truenas.CreateZvolOpts{
-	// 	Name:    diskPath,
-	// 	Volsize: int64(cfg.VM.DiskSize) * 1_000_000_000,
-	// 	Sparse:  true,
-	// })
-	// if err != nil {
-	// 	return err
-	// }
 
 	_, err = s.CreateDevice(ctx, truenas.CreateVMDeviceOpts{
 		VM:         vm.ID,
 		DeviceType: truenas.DeviceTypeDisk,
 		Disk: &truenas.CreateDiskDevice{
-			Type:       "VIRTIO",
-			ZvolName:   truenas.StringPtr(strings.TrimPrefix(diskPath, "/mnt/")),
-			CreateZvol: true,
-			ZvolSize:   truenas.Int64Ptr(int64(cfg.VM.DiskSize) * 1024 * 1024 * 1024),
-		},
-		Order: truenas.Int64Ptr(1000),
-	})
+			Type: "VIRTIO",
+			Path: diskPath,
+		}})
 	if err != nil {
 		return err
 	}
-
-	vmService := truenas.NewVMService(c, c.Version())
-	vmService.ConvertDevice(ctx, truenas.ConvertDeviceOpts{
-		SourcePath: path.Join(settings.ISODir, path.Base(vmconfig.Images[cfg.VM.ImageId].URL)),
-		DestPath:   path.Join("/dev/zvol/", strings.TrimPrefix(diskPath, "/mnt/")),
-	})
 
 	_, err = s.CreateDevice(ctx, truenas.CreateVMDeviceOpts{
 		VM:         vm.ID,
@@ -121,7 +125,6 @@ func createVMWithConfig(ctx context.Context, c client.Client, cfg *vmconfig.Crea
 		CDROM: &truenas.CDROMDevice{
 			Path: path.Join(settings.ISODir, cfg.VM.Name+".iso"),
 		},
-		Order: truenas.Int64Ptr(1001),
 	})
 	if err != nil {
 		return err
@@ -131,9 +134,10 @@ func createVMWithConfig(ctx context.Context, c client.Client, cfg *vmconfig.Crea
 		VM:         vm.ID,
 		DeviceType: truenas.DeviceTypeNIC,
 		NIC: &truenas.NICDevice{
-			Type:      "VIRTIO",
-			NICAttach: cfg.VM.NIC,
-			MAC:       cfg.VM.MACAddress,
+			Type:                "VIRTIO",
+			NICAttach:           cfg.VM.NIC,
+			MAC:                 cfg.VM.MACAddress,
+			TrustGuestRxFilters: true,
 		},
 	})
 
