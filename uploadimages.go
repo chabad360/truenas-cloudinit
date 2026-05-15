@@ -23,7 +23,7 @@ func uploadImages(ctx context.Context, cfg *vmconfig.CreateVMConfig, id uuid.UUI
 		return err
 	}
 
-	err = c.PutFile(ctx, path.Join(settings.ISODir, cfg.VM.Name+".iso"), truenas.PutFileOptions{}, func(w io.Writer) error {
+	err = c.PutFile(ctx, path.Join(settings.ISODir, fmt.Sprintf("%s-%s.iso", cfg.VM.Name, id.String()[24:])), truenas.PutFileOptions{}, func(w io.Writer) error {
 		_, err := iso.WriteTo(w)
 		return err
 	})

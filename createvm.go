@@ -123,7 +123,7 @@ func createVMWithConfig(ctx context.Context, c client.Client, cfg *vmconfig.Crea
 		VM:         vm.ID,
 		DeviceType: truenas.DeviceTypeCDROM,
 		CDROM: &truenas.CDROMDevice{
-			Path: path.Join(settings.ISODir, cfg.VM.Name+".iso"),
+			Path: path.Join(settings.ISODir, fmt.Sprintf("%s-%s.iso", cfg.VM.Name, id.String()[24:])),
 		},
 	})
 	if err != nil {
@@ -137,9 +137,11 @@ func createVMWithConfig(ctx context.Context, c client.Client, cfg *vmconfig.Crea
 			Type:                "VIRTIO",
 			NICAttach:           cfg.VM.NIC,
 			MAC:                 cfg.VM.MACAddress,
-			TrustGuestRxFilters: true,
 		},
 	})
+	if err != nil {
+		return err
+	}
 
 	return nil
 }

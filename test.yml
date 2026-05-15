@@ -1,5 +1,5 @@
 vm:
-    name: coolify-1
+    name: coolify_1
     image_id: debian-13-generic-amd64-20260512-2476
     vcpus: 1
     cores: 4
@@ -8,23 +8,18 @@ vm:
     min_memory: 2048
     disk_dir: /mnt/main/VMs/volumes
     disk_size: 50
-    nic: eno1
-    mac_address: 00:a0:98:46:eb:7c
+    nic: br1
+    mac_address: 00:a0:98:48:c3:ec
 cloud_init:
     users:
         - name: root
           ssh_authorized_keys:
             - |
-              ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIN+WF59wojop5ghMEuRYSeZyZqgWT1+L8VnJt+Fb1dIm coder@2db740a2b7d7
+              ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCShM3jfEjfZM0NOOjGlIvPxxCee3gYiVmfbFy/VuOswFYLrOch6XDHSqECH7xdcArbPsYKo+5yzn/cKPq9YDg4MkwsYhFw+vG1jwfkz7/Kpv2ZwJy+CNR7SdDTM03OyQrV4NjvKVn5MvYLgcul60zcd2ryRstZnt+n6+nlTwemOQvsBJJkrMu8YguUL3zCy86ks/T7qfi3QCx5/ZQtvEpZrgSGYMogdseMiGop94hpQUX9Z9N/cGCfctXuvXgCP6dQ+Q7+gjjIfF2bQ5kr32GSuHKaTL621laRG4BR6HnIuyxHy576kcIR6cI3Aybsq4eA1cQ6X7nWVccYkUk3OYMJ coolify-generated-ssh-key
           lock_passwd: false
-    chpasswd:
-        expire: false
-        users:
-            - name: root
-              password: $2a$10$mr1eZVF3Y5ywnnnlTBAk0OCt0PMCpMXeIjvOfVawDe6sxgcE15P9G
     packages:
         - qemu-guest-agent
     timezone: America/New_York
     ssh_pwauth: true
-    hostname: test
+    hostname: coolify-1
     disable_root: false
